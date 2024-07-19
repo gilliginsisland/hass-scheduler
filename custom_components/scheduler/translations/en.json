@@ -1,0 +1,36 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Scheduler is already configured"
+    },
+    "error": {},
+    "step": {
+      "user": {
+        "title": "Scheduler Options",
+        "data": {
+          "calendars": "Calendars",
+          "historic": "Historic",
+          "preload": "Preload",
+          "interval": "Interval"
+        }
+      }
+    }
+  },
+  "options": {
+    "abort": {
+      "already_configured": "Scheduler is already configured"
+    },
+    "error": {},
+    "step": {
+      "init": {
+        "title": "Scheduler Options",
+        "data": {
+          "calendars": "Calendars",
+          "historic": "Historic",
+          "preload": "Preload",
+          "interval": "Interval"
+        }
+      }
+    }
+  }
+}

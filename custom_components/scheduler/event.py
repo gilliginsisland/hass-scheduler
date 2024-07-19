@@ -6,7 +6,7 @@ from homeassistant.core import (
     HomeAssistant,
     callback,
     Context,
-    DOMAIN as HomeAssistant_DOMAIN
+    DOMAIN as HOMEASSISTANT_DOMAIN
 )
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -51,10 +51,12 @@ class Event():
 
         # sort by latest datetime first
         # so we can break at first event in the past
-        for svc, dt in sorted(self._actions, key=lambda x: x[1], reverse=True):
+        for service, dt in sorted(self._actions, key=lambda x: x[1], reverse=True):
             # schedule and track the service datetime combo
-            self.subscriptions[(svc, dt)] = async_track_point_in_time(
-                self.hass, partial(self._async_call_service, svc), dt
+            service_data = { ATTR_ENTITY_ID: self.entity_id }
+            call_service = partial(self._async_call_service, service, service_data)
+            self.subscriptions[(service, dt)] = async_track_point_in_time(
+                self.hass, call_service, dt
             )
 
             # break if the current time is past the prev event since any earlier
@@ -69,18 +71,17 @@ class Event():
             self.subscriptions.pop(k)()
 
     @callback
-    def _async_call_service(self, service: str, *args):
+    def _async_call_service(self, service: str, service_data: dict[str, str], _: datetime):
         event_data: EventSchedulerChangedData = {
             'entity_id': self.entity_id,
             'display_name': self.display_name,
             'service': service,
         }
-        service_data = { ATTR_ENTITY_ID: self.entity_id }
         context = Context()
 
         self.hass.bus.async_fire(EVENT_SCHEDULER_CHANGED, event_data, context=context)
         self.hass.async_create_task(
             self.hass.services.async_call(
-                HomeAssistant_DOMAIN, service, service_data, context=context
+                HOMEASSISTANT_DOMAIN, service, service_data, context=context
             )
         )

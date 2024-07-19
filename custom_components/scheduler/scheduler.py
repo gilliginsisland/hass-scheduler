@@ -2,6 +2,7 @@ import asyncio
 from datetime import timedelta, datetime
 from itertools import chain
 from typing import Any, Callable, Coroutine, Iterable, Mapping
+import logging
 
 from homeassistant.components.calendar import CalendarEntity, CalendarEvent
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
@@ -18,7 +19,6 @@ from .const import (
 
 from .event import Event
 from .util import ctag, parse_event
-import logging
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -95,15 +95,15 @@ class Scheduler():
             end=(now + self.preload),
         ), entities)
 
-        events = dict(chain.from_iterable(await asyncio.gather(*coros)))
+        calendar_events = dict(chain.from_iterable(await asyncio.gather(*coros)))
 
         self._async_untrack([
             tag for tag in self._events
-            if tag not in events
+            if tag not in calendar_events
         ])
 
         self._async_track([
-            (tag, parse_event(self.hass, event))
-            for tag, event in events.items()
-            if tag not in self._events
+            (tag, event)
+            for tag, calendar_event in calendar_events.items()
+            if tag not in self._events and (event := parse_event(self.hass, calendar_event))
         ])

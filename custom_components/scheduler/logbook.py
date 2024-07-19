@@ -40,7 +40,7 @@ def async_describe_events(
 
         return {
             LOGBOOK_ENTRY_NAME: "Scheduler",
-            LOGBOOK_ENTRY_MESSAGE: f"sending command {event.data['service']} for {event.data['display_name']}",
+            LOGBOOK_ENTRY_MESSAGE: f"send command {event.data['service']} for {event.data['display_name']}",
             LOGBOOK_ENTRY_ENTITY_ID: event.data['entity_id'],
         }
 

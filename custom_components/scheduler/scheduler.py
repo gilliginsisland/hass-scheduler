@@ -16,7 +16,6 @@ from .const import (
     CONF_INTERVAL,
     CONF_PRELOAD,
 )
-
 from .event import Event
 from .util import ctag, parse_event
 
@@ -70,17 +69,6 @@ class Scheduler():
 
         self._async_untrack(list(self._events))
 
-    def _async_track(self, events: list[tuple[str, Event]]):
-        for tag, event in events:
-            _LOGGER.debug(f'Tracking new event: "{event.display_name}"<{tag}>')
-            event.track()
-            self._events[tag] = event
-
-    def _async_untrack(self, tags: list[str]):
-        for tag in tags:
-            _LOGGER.debug(f'Untracking event: "{self._events[tag].display_name}"<{tag}>')
-            self._events.pop(tag).untrack()
-
     async def async_refresh_events(self, now: datetime):
         _LOGGER.debug("Getting list of calendars")
         entities = [
@@ -107,3 +95,14 @@ class Scheduler():
             for tag, calendar_event in calendar_events.items()
             if tag not in self._events and (event := parse_event(self.hass, calendar_event))
         ])
+
+    def _async_track(self, events: list[tuple[str, Event]]):
+        for tag, event in events:
+            _LOGGER.debug(f'Tracking new event: "{event.display_name}"<{tag}>')
+            event.track()
+            self._events[tag] = event
+
+    def _async_untrack(self, tags: list[str]):
+        for tag in tags:
+            _LOGGER.debug(f'Untracking event: "{self._events[tag].display_name}"<{tag}>')
+            self._events.pop(tag).untrack()

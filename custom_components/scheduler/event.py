@@ -10,6 +10,8 @@ from homeassistant.core import (
 )
 from homeassistant.const import (
     ATTR_ENTITY_ID,
+    ATTR_FRIENDLY_NAME,
+    ATTR_SERVICE,
     SERVICE_TURN_ON,
     SERVICE_TURN_OFF,
 )
@@ -73,9 +75,9 @@ class Event():
     @callback
     def _async_call_service(self, service: str, service_data: dict[str, str], _: datetime):
         event_data: EventSchedulerChangedData = {
-            'entity_id': self.entity_id,
-            'display_name': self.display_name,
-            'service': service,
+            ATTR_ENTITY_ID: self.entity_id,
+            ATTR_FRIENDLY_NAME: self.display_name,
+            ATTR_SERVICE: service,
         }
         context = Context()
 

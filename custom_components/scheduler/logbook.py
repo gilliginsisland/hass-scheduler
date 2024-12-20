@@ -1,5 +1,10 @@
 from typing import Any, Callable, Mapping, TypeVar, TypedDict
 
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    ATTR_FRIENDLY_NAME,
+    ATTR_SERVICE,
+)
 from homeassistant.core import (
     HomeAssistant,
     Event,
@@ -15,12 +20,13 @@ from homeassistant.util.event_type import EventType
 from .const import DOMAIN
 
 _DataT = TypeVar("_DataT", bound=Mapping[str, Any])
-_DescribeEventCallbackT = Callable[[str, EventType[_DataT], Callable[[Event[_DataT]], dict[str, str]]], None]
+_DescribeEventCallbackT = Callable[[Event[_DataT]], dict[str, str]]
+_DescribeEventT = Callable[[str, EventType[_DataT], _DescribeEventCallbackT[_DataT]], None]
 
 
 class EventSchedulerChangedData(TypedDict):
     entity_id: str
-    display_name: str
+    friendly_name: str
     service: str
 
 EVENT_SCHEDULER_CHANGED: EventType[EventSchedulerChangedData] = EventType("scheduler_state_change")
@@ -28,7 +34,7 @@ EVENT_SCHEDULER_CHANGED: EventType[EventSchedulerChangedData] = EventType("sched
 @callback
 def async_describe_events(
     hass: HomeAssistant,
-    async_describe_event: _DescribeEventCallbackT[EventSchedulerChangedData]
+    async_describe_event: _DescribeEventT[EventSchedulerChangedData]
 ) -> None:
     """Describe logbook events."""
 
@@ -37,11 +43,14 @@ def async_describe_events(
         event: Event[EventSchedulerChangedData],
     ) -> dict[str, str]:
         """Describe a logbook event."""
+        data = event.data
+
+        message = f"send command {data[ATTR_SERVICE]} for {data[ATTR_FRIENDLY_NAME]}"
 
         return {
             LOGBOOK_ENTRY_NAME: "Scheduler",
-            LOGBOOK_ENTRY_MESSAGE: f"send command {event.data['service']} for {event.data['display_name']}",
-            LOGBOOK_ENTRY_ENTITY_ID: event.data['entity_id'],
+            LOGBOOK_ENTRY_MESSAGE: message,
+            LOGBOOK_ENTRY_ENTITY_ID: data[ATTR_ENTITY_ID],
         }
 
     async_describe_event(DOMAIN, EVENT_SCHEDULER_CHANGED, async_describe_logbook_event)

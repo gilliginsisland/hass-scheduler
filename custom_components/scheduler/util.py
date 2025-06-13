@@ -29,7 +29,7 @@ def entity_state(hass: HomeAssistant, entity_id_or_name: str) -> State | None:
 		return state
 
 	for state in hass.states.async_all():
-		if friendly_name(state) == entity_id_or_name:
+		if friendly_name(state).lower() == entity_id_or_name:
 			return state
 
 	ar = area_registry.async_get(hass)

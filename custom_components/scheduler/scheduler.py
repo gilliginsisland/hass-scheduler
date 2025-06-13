@@ -98,11 +98,11 @@ class Scheduler():
 
     def _async_track(self, events: list[tuple[str, Event]]):
         for tag, event in events:
-            _LOGGER.debug(f'Tracking new event: "{event.display_name}"<{tag}>')
+            _LOGGER.debug(f'Tracking new event: "{event.friendly_name}"<{tag}>')
             event.track()
             self._events[tag] = event
 
     def _async_untrack(self, tags: list[str]):
         for tag in tags:
-            _LOGGER.debug(f'Untracking event: "{self._events[tag].display_name}"<{tag}>')
+            _LOGGER.debug(f'Untracking event: "{self._events[tag].friendly_name}"<{tag}>')
             self._events.pop(tag).untrack()

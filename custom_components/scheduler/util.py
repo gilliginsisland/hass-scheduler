@@ -1,6 +1,10 @@
 from typing import NamedTuple
 from hashlib import sha256
 
+from homeassistant.helpers import (
+	area_registry,
+	entity_registry,
+)
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.core import HomeAssistant, State
 
@@ -19,9 +23,26 @@ def friendly_name(state: State) -> str:
 
 def entity_state(hass: HomeAssistant, entity_id_or_name: str) -> State | None:
 	"""Find an entity by id or name"""
+	entity_id_or_name = entity_id_or_name.strip().lower()
 
 	if (state := hass.states.get(entity_id_or_name)) is not None:
 		return state
+
+	ar = area_registry.async_get(hass)
+	er = entity_registry.async_get(hass)
+
+	for area in ar.areas.values():
+		area_name = area.name.strip().lower()
+		if not entity_id_or_name.startswith(area_name):
+			continue
+
+		suffix = entity_id_or_name[len(area_name):].strip()
+		for entity in er.entities.values():
+			if entity.area_id != area.id:
+				continue
+
+			if (state := hass.states.get(entity.entity_id)) and friendly_name(state).lower() == suffix:
+				return state
 
 	for state in hass.states.async_all():
 		if friendly_name(state) == entity_id_or_name:
@@ -67,7 +88,7 @@ def parse_event(hass: HomeAssistant, event: CalendarEvent) -> Event | None:
 	return Event(
 		hass,
 		entity_id=state.entity_id,
-		display_name=friendly_name(state),
+		friendly_name=friendly_name(state),
 		on_datetime=on_datetime,
 		off_datetime=off_datetime,
 	)

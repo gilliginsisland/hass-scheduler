@@ -32,13 +32,13 @@ class Event():
         hass: HomeAssistant,
         *,
         entity_id: str,
-        display_name: str,
+        friendly_name: str,
         on_datetime: datetime | None = None,
         off_datetime: datetime | None = None,
     ):
         self.hass = hass
         self.entity_id = entity_id
-        self.display_name = display_name
+        self.friendly_name = friendly_name
 
         self._actions: list[tuple[str, datetime]] = []
         if on_datetime:
@@ -76,7 +76,7 @@ class Event():
     def _async_call_service(self, service: str, service_data: dict[str, str], _: datetime):
         event_data: EventSchedulerChangedData = {
             ATTR_ENTITY_ID: self.entity_id,
-            ATTR_FRIENDLY_NAME: self.display_name,
+            ATTR_FRIENDLY_NAME: self.friendly_name,
             ATTR_SERVICE: service,
         }
         context = Context()

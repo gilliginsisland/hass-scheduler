@@ -3,7 +3,7 @@ from hashlib import sha256
 
 from homeassistant.helpers import (
 	area_registry,
-	entity_registry,
+	template,
 )
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.core import HomeAssistant, State
@@ -28,25 +28,20 @@ def entity_state(hass: HomeAssistant, entity_id_or_name: str) -> State | None:
 	if (state := hass.states.get(entity_id_or_name)) is not None:
 		return state
 
-	ar = area_registry.async_get(hass)
-	er = entity_registry.async_get(hass)
+	for state in hass.states.async_all():
+		if friendly_name(state) == entity_id_or_name:
+			return state
 
+	ar = area_registry.async_get(hass)
 	for area in ar.areas.values():
 		area_name = area.name.strip().lower()
 		if not entity_id_or_name.startswith(area_name):
 			continue
 
 		suffix = entity_id_or_name[len(area_name):].strip()
-		for entity in er.entities.values():
-			if entity.area_id != area.id:
-				continue
-
-			if (state := hass.states.get(entity.entity_id)) and friendly_name(state).lower() == suffix:
+		for entity_id in template.area_entities(hass, area.id):
+			if (state := hass.states.get(entity_id)) and friendly_name(state).lower() == suffix:
 				return state
-
-	for state in hass.states.async_all():
-		if friendly_name(state) == entity_id_or_name:
-			return state
 
 	return None
 

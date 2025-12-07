@@ -1,12 +1,19 @@
-from typing import NamedTuple
+from typing import (
+	Iterable,
+	NamedTuple,
+)
 from hashlib import sha256
 
 from homeassistant.helpers import (
-	area_registry,
-	template,
+	area_registry as ar,
+	device_registry as dr,
+	entity_registry as er,
 )
 from homeassistant.components.calendar import CalendarEvent
-from homeassistant.core import HomeAssistant, State
+from homeassistant.core import (
+	HomeAssistant,
+	State,
+)
 
 from .event import Event
 
@@ -32,14 +39,14 @@ def entity_state(hass: HomeAssistant, entity_id_or_name: str) -> State | None:
 		if friendly_name(state).lower() == entity_id_or_name:
 			return state
 
-	ar = area_registry.async_get(hass)
-	for area in ar.areas.values():
+	area_reg = ar.async_get(hass)
+	for area in area_reg.areas.values():
 		area_name = area.name.strip().lower()
 		if not entity_id_or_name.startswith(area_name):
 			continue
 
 		suffix = entity_id_or_name[len(area_name):].strip()
-		for entity_id in template.area_entities(hass, area.id):
+		for entity_id in area_entities(hass, area.id):
 			if (state := hass.states.get(entity_id)) and friendly_name(state).lower() == suffix:
 				return state
 
@@ -93,3 +100,22 @@ def ctag(event: CalendarEvent) -> str:
 	"""Calculate the hash of a calendar event"""
 
 	return sha256(str(event.as_dict()).encode('utf-8')).hexdigest()
+
+
+def area_entities(hass: HomeAssistant, area_id: str) -> Iterable[str]:
+	"""Return entities for a given area ID or name."""
+
+	ent_reg = er.async_get(hass)
+	yield from (
+		entry.entity_id for entry in er.async_entries_for_area(ent_reg, area_id)
+	)
+
+	dev_reg = dr.async_get(hass)
+	# We also need to add entities tied to a device in the area that don't themselves
+	# have an area specified since they inherit the area from the device.
+	yield from (
+		entity.entity_id
+		for device in dr.async_entries_for_area(dev_reg, area_id)
+		for entity in er.async_entries_for_device(ent_reg, device.id)
+		if entity.area_id is None
+	)

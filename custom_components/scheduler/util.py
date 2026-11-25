@@ -1,21 +1,21 @@
+from collections.abc import Iterable
 from typing import (
-	Iterable,
 	NamedTuple,
 )
-from hashlib import sha256
+
+import probatio
 
 from homeassistant.helpers import (
 	area_registry as ar,
 	device_registry as dr,
 	entity_registry as er,
 )
-from homeassistant.components.calendar import CalendarEvent
 from homeassistant.core import (
 	HomeAssistant,
 	State,
 )
 
-from .event import Event
+_NAME_SCHEMA = probatio.All(str, str.strip)
 
 
 class ParsedEventSummary(NamedTuple):
@@ -25,7 +25,10 @@ class ParsedEventSummary(NamedTuple):
 
 
 def friendly_name(state: State) -> str:
-	return state.attributes.get('friendly_name', state.name).strip()
+	try:
+		return _NAME_SCHEMA(state.attributes.get('friendly_name', state.name))
+	except probatio.Invalid:
+		return state.entity_id
 
 
 def entity_state(hass: HomeAssistant, entity_id_or_name: str) -> State | None:
@@ -53,53 +56,29 @@ def entity_state(hass: HomeAssistant, entity_id_or_name: str) -> State | None:
 	return None
 
 
-def parse_event_summary(entity_id_or_name: str) -> ParsedEventSummary:
+def parse_event_summary(entity_id_or_name: str) -> ParsedEventSummary | None:
 	"""Parse the event name"""
 
-	if entity_id_or_name[0] == '!':
+	entity_id_or_name = entity_id_or_name.strip()
+	if entity_id_or_name.startswith('!'):
 		entity_id_or_name = entity_id_or_name[1:]
 		invert = True
 	else:
 		invert = False
 
-	if entity_id_or_name[-1] == '+':
+	if entity_id_or_name.endswith('+'):
 		entity_id_or_name = entity_id_or_name[:-1]
 		oneshot = True
 	else:
 		oneshot = False
 
+	entity_id_or_name = entity_id_or_name.strip()
+	if not entity_id_or_name:
+		return None
+
 	return ParsedEventSummary(
 		entity_id_or_name, invert=invert, oneshot=oneshot
 	)
-
-
-def parse_event(hass: HomeAssistant, event: CalendarEvent) -> Event | None:
-	"""Parse a calendar event into a scheduler event"""
-
-	data = parse_event_summary(event.summary)
-
-	if not (state := entity_state(hass, data.entity_id_or_name)):
-		return None
-
-	on_datetime = event.start_datetime_local
-	off_datetime = event.end_datetime_local if not data.oneshot else None
-
-	if data.invert:
-		on_datetime, off_datetime = off_datetime, on_datetime
-
-	return Event(
-		hass,
-		entity_id=state.entity_id,
-		friendly_name=friendly_name(state),
-		on_datetime=on_datetime,
-		off_datetime=off_datetime,
-	)
-
-
-def ctag(event: CalendarEvent) -> str:
-	"""Calculate the hash of a calendar event"""
-
-	return sha256(str(event.as_dict()).encode('utf-8')).hexdigest()
 
 
 def area_entities(hass: HomeAssistant, area_id: str) -> Iterable[str]:

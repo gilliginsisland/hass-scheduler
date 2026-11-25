@@ -1,10 +1,13 @@
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import TypedDict, override
 
-import voluptuous as vol
+import probatio
 
+from homeassistant.components.calendar import DOMAIN as CALENDAR_DOMAIN
 from homeassistant.helpers.schema_config_entry_flow import (
     SchemaConfigFlowHandler,
     SchemaFlowFormStep,
+    SchemaFlowStep,
 )
 from homeassistant.helpers.selector import (
     EntitySelector,
@@ -13,30 +16,42 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     DOMAIN,
-    CALENDAR_DOMAIN,
     CONF_CALENDARS,
-    CONF_HISTORIC,
     CONF_PRELOAD,
     CONF_INTERVAL,
+    CONF_END_CONTROL,
+    CONF_RETRY_INTERVAL,
+    DEFAULT_PRELOAD,
+    DEFAULT_INTERVAL,
+    DEFAULT_END_CONTROL,
+    DEFAULT_RETRY_INTERVAL,
 )
 
-CONFIG_SCHEMA = vol.Schema({
-    vol.Required(CONF_CALENDARS): EntitySelector(
+
+class SchedulerOptions(TypedDict):
+    calendars: list[str]
+    preload: int
+    interval: int
+    end_control: int
+    retry_interval: int
+
+
+OPTIONS_SCHEMA = probatio.Schema({
+    probatio.Required(CONF_CALENDARS): EntitySelector(
         EntitySelectorConfig(domain=CALENDAR_DOMAIN, multiple=True)
     ),
+    probatio.Required(CONF_PRELOAD, default=DEFAULT_PRELOAD): probatio.All(int, probatio.Range(min=0)),
+    probatio.Required(CONF_INTERVAL, default=DEFAULT_INTERVAL): probatio.All(int, probatio.Range(min=1)),
+    probatio.Required(CONF_END_CONTROL, default=DEFAULT_END_CONTROL): probatio.All(int, probatio.Range(min=0)),
+    probatio.Required(CONF_RETRY_INTERVAL, default=DEFAULT_RETRY_INTERVAL): probatio.All(int, probatio.Range(min=1)),
 })
 
-OPTIONS_SCHEMA = CONFIG_SCHEMA.extend({
-    vol.Required(CONF_HISTORIC, default=300): int,
-    vol.Required(CONF_PRELOAD, default=3600): int,
-    vol.Required(CONF_INTERVAL, default=300): int,
-})
 
-CONFIG_FLOW = {
-    "user": SchemaFlowFormStep(schema=CONFIG_SCHEMA)
+CONFIG_FLOW: dict[str, SchemaFlowStep] = {
+    "user": SchemaFlowFormStep(schema=OPTIONS_SCHEMA)
 }
 
-OPTIONS_FLOW = {
+OPTIONS_FLOW: dict[str, SchemaFlowStep] = {
     "init": SchemaFlowFormStep(schema=OPTIONS_SCHEMA)
 }
 
@@ -44,10 +59,14 @@ OPTIONS_FLOW = {
 class SchedulerConfigFlowHandler(SchemaConfigFlowHandler, domain=DOMAIN):
     """Handle a config flow for Scheduler."""
 
-    config_flow = CONFIG_FLOW
-    options_flow = OPTIONS_FLOW
+    MINOR_VERSION: int = 2
 
-    def async_config_entry_title(self, options: Mapping[str, Any]) -> str:
+    config_flow: Mapping[str, SchemaFlowStep] = CONFIG_FLOW
+    options_flow: Mapping[str, SchemaFlowStep] | None = OPTIONS_FLOW
+    options_flow_reloads: bool = True
+
+    @override
+    def async_config_entry_title(self, options: Mapping[str, object]) -> str:
         """Return config entry title."""
 
         return f'Scheduler {options[CONF_CALENDARS]}'

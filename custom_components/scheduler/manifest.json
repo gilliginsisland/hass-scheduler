@@ -6,7 +6,9 @@
   ],
   "config_flow": true,
   "dependencies": [
-    "calendar"
+    "calendar",
+    "frontend",
+    "websocket_api"
   ],
   "documentation": "https://github.com/gilliginsisland/hass-scheduler",
   "integration_type": "service",

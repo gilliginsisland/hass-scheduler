@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
 from homeassistant.components.calendar import CalendarEvent
 from homeassistant.config_entries import ConfigEntry
@@ -26,12 +26,14 @@ from homeassistant.core import (
     callback,
     valid_entity_id,
 )
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
 from .const import (
     COMMAND_TIMEOUT,
     DOMAIN,
+    SIGNAL_SCHEDULES_UPDATED,
 )
 from .coordinator import CalendarCoordinator
 from .logbook import EVENT_SCHEDULER_CHANGED, EventSchedulerChangedData
@@ -41,6 +43,35 @@ if TYPE_CHECKING:
     from .config_flow import SchedulerOptions
 
 _LOGGER = logging.getLogger(__name__)
+
+
+type ActionStatus = Literal["upcoming", "pending", "confirmed", "overridden", "unresolved"]
+
+
+class ScheduledAction(TypedDict):
+    calendar_id: str
+    target: str
+    entity_id: str | None
+    name: str
+    start: str
+    end: str
+    state: Literal["on", "off"]
+    current_state: str | None
+    end_control: bool
+    status: ActionStatus
+
+
+class CalendarStatus(TypedDict):
+    entity_id: str
+    available: bool
+    error: str | None
+
+
+class SchedulerSnapshot(TypedDict):
+    entry_id: str
+    title: str
+    actions: list[ScheduledAction]
+    calendars: list[CalendarStatus]
 
 
 @dataclass(frozen=True)
@@ -135,6 +166,7 @@ class Scheduler():
     @callback
     def _async_calendar_ready(self, event: Event[EventStateChangedData]) -> None:
         """Refresh when a selected calendar appears or becomes available again."""
+        self._wakeup.set()
         previous = event.data["old_state"]
         if previous is None or previous.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             self._calendars[event.data["entity_id"]].async_refresh_if_ready()
@@ -157,34 +189,84 @@ class Scheduler():
         desired: dict[str, Schedule] = {}
         next_change: datetime | None = None
         unresolved: set[str] = set()
-        for calendar in self._calendars.values():
-            schedules = (
-                schedule for event in calendar.data
-                for schedule in parse_event(event, calendar.entity_id, self._end_control)
-            )
-            for schedule in schedules:
-                for boundary in (schedule.start, schedule.end):
-                    if now < boundary and (next_change is None or boundary < next_change):
-                        next_change = boundary
-                if not schedule.start <= now < schedule.end:
-                    continue
+        for schedule in self._schedules():
+            for boundary in (schedule.start, schedule.end):
+                if now < boundary and (next_change is None or boundary < next_change):
+                    next_change = boundary
+            if not schedule.start <= now < schedule.end:
+                continue
 
-                target = schedule.target.strip().lower()
-                if valid_entity_id(target):
-                    entity_id = target
-                elif (state := entity_state(self.hass, target)) is not None:
-                    entity_id = state.entity_id
-                else:
-                    unresolved.add(target)
-                    if target not in self._unresolved:
-                        _LOGGER.warning(
-                            "Could not resolve scheduled entity %s; will retry", target
-                        )
-                    continue
-                if entity_id not in desired or schedule.sort_key > desired[entity_id].sort_key:
-                    desired[entity_id] = schedule
+            if (entity_id := self._resolve_target(schedule.target)) is None:
+                target = schedule.target
+                unresolved.add(target)
+                if target not in self._unresolved:
+                    _LOGGER.warning(
+                        "Could not resolve scheduled entity %s; will retry", target
+                    )
+                continue
+            if entity_id not in desired or schedule.sort_key > desired[entity_id].sort_key:
+                desired[entity_id] = schedule
         self._unresolved = unresolved
         return desired, next_change
+
+    def _schedules(self) -> Iterator[Schedule]:
+        """Expand the current calendar data; removed events have no schedules."""
+        for calendar in self._calendars.values():
+            for event in calendar.data:
+                yield from parse_event(event, calendar.entity_id, self._end_control)
+
+    def _resolve_target(self, target: str) -> str | None:
+        target = target.strip().lower()
+        if valid_entity_id(target):
+            return target
+        state = entity_state(self.hass, target)
+        return state.entity_id if state is not None else None
+
+    @callback
+    def async_get_tasks(self) -> SchedulerSnapshot:
+        """Describe the same schedules and priorities used by enforcement."""
+        now = dt_util.utcnow()
+        desired, _ = self._active_schedules(now)
+        actions: list[ScheduledAction] = []
+        for schedule in self._schedules():
+            if schedule.end <= now:
+                continue
+            entity_id = self._resolve_target(schedule.target)
+            state = self.hass.states.get(entity_id) if entity_id is not None else None
+            status: ActionStatus
+            if entity_id is None:
+                status = "unresolved"
+            elif now < schedule.start:
+                status = "upcoming"
+            elif desired.get(entity_id) != schedule:
+                status = "overridden"
+            elif self._state_matches(entity_id, schedule):
+                status = "confirmed"
+            else:
+                status = "pending"
+            actions.append({
+                "calendar_id": schedule.calendar_id,
+                "target": schedule.target,
+                "entity_id": entity_id,
+                "name": friendly_name(state) if state is not None else schedule.target,
+                "start": schedule.start.isoformat(),
+                "end": schedule.end.isoformat(),
+                "state": schedule.state,
+                "current_state": state.state if state is not None else None,
+                "end_control": schedule.priority == 0,
+                "status": status,
+            })
+        actions.sort(key=lambda action: (action["start"], action["end"], action["name"]))
+        return {
+            "entry_id": self.config_entry.entry_id,
+            "title": self.config_entry.title,
+            "actions": actions,
+            "calendars": [{
+                "entity_id": calendar.entity_id,
+                "available": calendar.calendar is not None,
+                "error": str(calendar.last_exception) if not calendar.last_update_success else None,
+            } for calendar in self._calendars.values()],
+        }
 
     async def _async_run(self) -> None:
         attempts: dict[str, _RetryAttempt] = {}
@@ -192,6 +274,7 @@ class Scheduler():
             self._wakeup.clear()
             active, next_change = self._active_schedules(dt_util.utcnow())
             with self._track_state_changes(active):
+                async_dispatcher_send(self.hass, SIGNAL_SCHEDULES_UPDATED)
                 delay = await self._async_retry(active, attempts)
                 if delay == 0:
                     # Re-read states and ownership after commands finish.

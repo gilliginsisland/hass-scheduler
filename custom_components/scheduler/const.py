@@ -1,4 +1,6 @@
 DOMAIN = "scheduler"
+SIGNAL_SCHEDULES_UPDATED = f"{DOMAIN}_schedules_updated"
+CARD_URL = "/scheduler/scheduler-card.js"
 
 CONF_CALENDARS = "calendars"
 CONF_PRELOAD = "preload"
